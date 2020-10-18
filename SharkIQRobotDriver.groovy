@@ -26,47 +26,119 @@ import groovy.json.*
 import java.util.regex.*
 
 metadata {
-    definition (name: "Shark IQ Robot", namespace: "cstevens", author: "Chris Stevens") {
+    definition (name: "Shark IQ Robot-GG", namespace: "cstevens", author: "Chris Stevens") {
         capability "Switch"
-        capability "Momentary"
+        //capability "Momentary"
+        capability "Actuator"
+        
+        command"start"
+        command"stop"
+        command"pause"
+        command "returnToBase"
+        command "Eco"
+        command "Normal"
+        command "High"
+        
+        
+         
+        
+        attribute "Mode", "text"
+        attribute "Status", "text"
     }
+    
+ 
  
     preferences {
         input(name: "loginusername", type: "string", title:"Email", description: "Shark Account Email Address", required: true, displayDuringSetup: true)
         input(name: "loginpassword", type: "password", title:"Password", description: "Shark Account Password", required: true, displayDuringSetup: true)
         input(name: "sharkdevicename", type: "string", title:"Device Name", description: "Name you've given your Shark Device within the App", required: true, displayDuringSetup: true)
         input(name: "mobiletype", type: "enum", title:"Mobile Device", description: "Type of Mobile Device your Shark is setup on", required: true, displayDuringSetup: true, options:["Apple iOS", "Android OS"])
+          input name: "dockEnable", type: "bool", title: "Enable for *OFF = Return fo base * Default is *OFF = Stop*", defaultValue: false
+          input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
     }
+}
+
+def logsOff() {
+    log.warn "debug logging disabled..."
+    device.updateSetting("logEnable", [value: "false", type: "bool"])
+}
+def dockOff() {
+    log.warn "dock off  disabled..."
+    device.updateSetting("dockEnable", [value: "false", type: "bool"])
 }
  
 def parse(String description) {
-    log.debug(description)
+    if (logEnable)log.debug(description)
 }
  
 def push(String action, String operation, Integer operationValue) {
     def authtoken = ''
     def uuid = ''
     def dsnForDevice = ''
-    //toggle the switch to generate events for anything that is subscribed
-    sendEvent(name: "switch", value: "on", isStateChange: true)
-    runIn(1, toggleOff)
-    //sendEvent(name: "switch", value: "off", isStateChange: true)
     login()
     getDevices()
     getUserProfile()
     runCmd(action, operation, operationValue)
 }
  
-def toggleOff() {
+   def toggleOff() {
     sendEvent(name: "switch", value: "off", isStateChange: true)
+       if (logEnable)log.debug"toggleOff()"
 }
  
-def on() {
-    push("on", "SET_Operating_Mode", 2)
+def start() {
+    push("start", "SET_Operating_Mode", 2)
+    sendEvent(name: "switch", value: "on", isStateChange: true)
+    sendEvent(name: "Status", value: "cleaning")
+     if (logEnable)log.debug"start()"
 }
  
-def off() {
-    push("off", "SET_Operating_Mode", 3)
+def stop() {
+    push("stop", "SET_Operating_Mode", 3)
+    sendEvent(name: "switch", value: "off", isStateChange: true)
+    sendEvent(name: "Status", value: "idle")
+    if (logEnable)log.debug"stop()"
+}
+
+def pause() {
+    push("pause", "SET_Operating_Mode", 1)
+     sendEvent(name: "Status", value: "idle")
+    if (logEnable)log.debug"pause()"
+}
+
+def returnToBase() {
+    push("return", "SET_Operating_Mode", 4)
+     sendEvent(name: "Status", value: "Dock")
+    sendEvent(name: "switch", value: "off")
+    if (logEnable)log.debug"returnToBase()"
+    
+}
+def on(){
+    start()
+}
+
+def off(){
+     if (dockEnable) returnToBase()
+    else stop()
+}
+
+
+def Eco() {
+    push("Eco", "SET_Power_Mode", 1)
+     sendEvent(name: "Mode", value: "Eco")
+    if (logEnable)log.debug"Eco()"
+    }
+  
+def Normal() {
+    push("Normal", "SET_Power_Mode", 2)
+     sendEvent(name: "Mode", value: "Normal")
+    if (logEnable)log.debug"Normal()"
+    }
+    
+ def High() {
+    push("High", "SET_Power_Mode", 3)
+     sendEvent(name: "Mode", value: "High")
+     if (logEnable)log.debug"High()"
 }
 
 def login() {
@@ -95,17 +167,17 @@ def login() {
     httpPost(params) { response ->
         
         if(response.getStatus() == 200 || response.getStatus() == 201) {
-			log.debug "Response received from Shark in the postReponseHandler. $response.data"
+			if (logEnable)log.debug "Response received from Shark in the postReponseHandler. $response.data"
             def accesstokenstring = ("$response.data" =~ /access_token:([A-Za-z0-9]*.*?)/)
             authtoken = accesstokenstring[0][1]
     	}
         else {
-    		log.error "Shark failed. Shark returned ${response.getStatus()}."
-        	log.error "Error = ${response.getErrorData()}"
+    		if (logEnable)log.error "Shark failed. Shark returned ${response.getStatus()}."
+        	if (logEnable)log.error "Error = ${response.getErrorData()}"
     	}
     }
     } catch (e) {
-    	log.error "Error during login: $e"
+    	if (logEnable)log.error "Error during login: $e"
 	}
 }
 
@@ -119,17 +191,17 @@ def getUserProfile() {
     httpGet(params) { response ->
         
         if(response.getStatus() == 200 || response.getStatus() == 201) {
-			log.debug "Response received from Shark in the postReponseHandler. $response.data"
+			if (logEnable)log.debug "Response received from Shark in the postReponseHandler. $response.data"
             def uuidstring = ("$response.data" =~ /uuid:([A-Za-z0-9-]*.*?)/)
             uuid = uuidstring[0][1]
     	}
         else {
-    		log.error "Shark failed. Shark returned ${response.getStatus()}."
-        	log.error "Error = ${response.getErrorData()}"
+    		if (logEnable)log.error "Shark failed. Shark returned ${response.getStatus()}."
+        	if (logEnable)log.error "Error = ${response.getErrorData()}"
     	}
     }
     } catch (e) {
-    	log.error "Error during getUserProfile: $e"
+    	if (logEnable)log.error "Error during getUserProfile: $e"
 	}
 
 }
@@ -143,7 +215,7 @@ def getDevices() {
     try {
     httpGet(params) { response ->
         if(response.getStatus() == 200 || response.getStatus() == 201) {
-			log.debug "Response received from Shark in the postReponseHandler. $response.data"
+			if (logEnable)log.debug "Response received from Shark in the postReponseHandler. $response.data"
             def devicedsn = ""
             for (devices in response.data.device ) {
                 if ("$sharkdevicename" == "${devices.product_name}")
@@ -153,16 +225,16 @@ def getDevices() {
             }
             if ("$dsnForDevice" == '')
             {
-                log.error "$sharkdevicename did not match any product_name on your account. Please verify your `Device Name`."
+                if (logEnable)log.error "$sharkdevicename did not match any product_name on your account. Please verify your `Device Name`."
             }
     	}
         else {
-    		log.error "Shark failed. Shark returned ${response.getStatus()}."
-        	log.error "Error = ${response.getErrorData()}"
+    		if (logEnable)log.error "Shark failed. Shark returned ${response.getStatus()}."
+        	if (logEnable)log.error "Error = ${response.getErrorData()}"
     	}
     }
     } catch (e) {
-    	log.error "Error during getDevices: $e"
+    	if (logEnable)log.error "Error during getDevices: $e"
 	}
 
 }
@@ -176,19 +248,19 @@ def runCmd(String action, String operation, Integer operationValue) {
         headers: ["Content-Type": "application/json", "Accept": "*/*", "Authorization": "auth_token $authtoken"],
         body: "{\"datapoint\":{\"value\":\"$operationValue\",\"metadata\":{\"userUUID\":\"$uuid\"}}}"
     ]
-    log.debug "$params"
+    if (logEnable)log.debug "$params"
     try {
     httpPost(params) { response ->
         
         if(response.getStatus() == 200 || response.getStatus() == 201) {
-			log.debug "Response received from Shark in the postReponseHandler. $response"
+			if (logEnable)log.debug "Response received from Shark in the postReponseHandler. $response"
     	}
         else {
-    		log.error "Shark failed. Shark returned ${response.getStatus()}."
-        	log.error "Error = ${response.getErrorData()}"
+    		if (logEnable)log.error "Shark failed. Shark returned ${response.getStatus()}."
+        	if (logEnable)log.error "Error = ${response.getErrorData()}"
     	}
     }
     } catch (e) {
-    	log.error "Error during runCmd: $e"
+    	if (logEnable)log.error "Error during runCmd: $e"
 	}
 }
