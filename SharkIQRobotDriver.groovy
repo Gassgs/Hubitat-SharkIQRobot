@@ -26,13 +26,12 @@ import groovy.json.*
 import java.util.regex.*
 
 metadata {
-    definition (name: "Shark IQ Robot-TestBot", namespace: "cstevens", author: "Chris Stevens") {
+    definition (name: "Shark IQ -TestBot", namespace: "cstevens", author: "Chris Stevens") {
         capability "Switch"
         //capability "Momentary"
         capability "Actuator"
         capability "Sensor"
         capability "Battery"
-        capability "Refresh"
         
         command"start"
         command"stop"
@@ -88,27 +87,27 @@ def push(String action, String operation, Integer operationValue) {
 def start() {
     push("start", "SET_Operating_Mode", 2)
     sendEvent(name: "switch", value: "on", isStateChange: true)
-    sendEvent(name: "Status", value: "cleaning")
+    sendEvent(name: "Status", value: "cleaning",isStateChange: true)
      if (logEnable)log.debug"start()"
 }
  
 def stop() {
     push("stop", "SET_Operating_Mode", 0)
     sendEvent(name: "switch", value: "off", isStateChange: true)
-    sendEvent(name: "Status", value: "idle")
+    sendEvent(name: "Status", value: "idle",isStateChange: true)
     if (logEnable)log.debug"stop()"
 }
 
 def pause() {
     push("pause", "SET_Operating_Mode", 1)
-     sendEvent(name: "Status", value: "idle")
+     sendEvent(name: "Status", value: "idle",isStateChange: true)
     if (logEnable)log.debug"pause()"
 }
 
 def returnToBase() {
     push("return", "SET_Operating_Mode", 3)
-     sendEvent(name: "Status", value: "Dock")
-    sendEvent(name: "switch", value: "off")
+     sendEvent(name: "Status", value: "Dock",isStateChange: true)
+    sendEvent(name: "switch", value: "off",isStateChange: true)
     if (logEnable)log.debug"returnToBase()"
     
 }
@@ -125,24 +124,21 @@ def off(){
 def Mode(ENUM){
      if  (ENUM=="Eco") {
     push("Eco", "SET_Power_Mode", 1)
-     sendEvent(name: "Mode", value: "Eco")
+     sendEvent(name: "Mode", value: "Eco",isStateChange: true)
     if (logEnable)log.debug"Eco()"
     }
    if  (ENUM=="Normal") {
     push("Normal", "SET_Power_Mode", 0)
-     sendEvent(name: "Mode", value: "Normal")
+     sendEvent(name: "Mode", value: "Normal",isStateChange: true)
     if (logEnable)log.debug"Normal()"
     }
      if  (ENUM=="Max") {
     push("Max", "SET_Power_Mode", 2)
-     sendEvent(name: "Mode", value: "High")
+     sendEvent(name: "Mode", value: "High",isStateChange: true)
      if (logEnable)log.debug"Max()"
      }
 }
 
-def refresh(){
-    getDevices()
-}
 
 def login() {
     def localDevicePort = (devicePort==null) ? "80" : devicePort
