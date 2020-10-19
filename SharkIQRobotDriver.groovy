@@ -32,6 +32,7 @@ metadata {
         capability "Actuator"
         capability "Sensor"
         capability "Battery"
+        capability "FanControl"
         
         command"start"
         command"stop"
@@ -42,6 +43,7 @@ metadata {
         
         attribute "Mode", "text"
         attribute "Status", "text"
+        attribute "speed","enum"
     }
     
  
@@ -125,21 +127,45 @@ def Mode(ENUM){
      if  (ENUM=="Eco") {
     push("Eco", "SET_Power_Mode", 1)
      sendEvent(name: "Mode", value: "Eco",isStateChange: true)
+     sendEvent(name: "speed", value: "low",isStateChange: true)
     if (logEnable)log.debug"Eco()"
     }
    if  (ENUM=="Normal") {
     push("Normal", "SET_Power_Mode", 0)
      sendEvent(name: "Mode", value: "Normal",isStateChange: true)
+     sendEvent(name: "speed", value: "medium",isStateChange: true)
     if (logEnable)log.debug"Normal()"
     }
      if  (ENUM=="Max") {
     push("Max", "SET_Power_Mode", 2)
-     sendEvent(name: "Mode", value: "High",isStateChange: true)
+     sendEvent(name: "Mode", value: "Max",isStateChange: true)
+      sendEvent(name: "speed", value: "high",isStateChange: true)
      if (logEnable)log.debug"Max()"
      }
 }
 
+//added for Google home - Fan/power mode- support
+def setSpeed(fanspeed){
+    if  (fanspeed=="low") {
+      push("Eco", "SET_Power_Mode", 1)
+     sendEvent(name: "Mode", value: "Eco",isStateChange: true)
+     sendEvent(name: "speed", value: "low",isStateChange: true)
+    if (logEnable)log.debug"Eco()"
+    }
+       if  (fanspeed=="medium") {  
+      push("Normal", "SET_Power_Mode", 0)
+     sendEvent(name: "Mode", value: "Normal",isStateChange: true)
+      sendEvent(name: "speed", value: "medium",isStateChange: true)
+    if (logEnable)log.debug"Normal()"
+       }
+    if  (fanspeed=="high") {  
+       push("Max", "SET_Power_Mode", 2)
+     sendEvent(name: "Mode", value: "Max",isStateChange: true)
+     sendEvent(name: "speed", value: "high",isStateChange: true)
+     if (logEnable)log.debug"Max()"     
+}
 
+}
 def login() {
     def localDevicePort = (devicePort==null) ? "80" : devicePort
     def app_id = ""
