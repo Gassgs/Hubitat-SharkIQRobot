@@ -38,7 +38,7 @@ metadata {
         command"stop"
         command"pause"
         command "returnToBase"
-        command "Mode", [[name:"Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "High"]]]
+        command "Mode", [[name:"Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "Max"]]]
    
         
         attribute "Mode", "text"
@@ -93,7 +93,7 @@ def start() {
 }
  
 def stop() {
-    push("stop", "SET_Operating_Mode", 3)
+    push("stop", "SET_Operating_Mode", 0)
     sendEvent(name: "switch", value: "off", isStateChange: true)
     sendEvent(name: "Status", value: "idle")
     if (logEnable)log.debug"stop()"
@@ -106,7 +106,7 @@ def pause() {
 }
 
 def returnToBase() {
-    push("return", "SET_Operating_Mode", 4)
+    push("return", "SET_Operating_Mode", 3)
      sendEvent(name: "Status", value: "Dock")
     sendEvent(name: "switch", value: "off")
     if (logEnable)log.debug"returnToBase()"
@@ -123,20 +123,20 @@ def off(){
 
 
 def Mode(ENUM){
-    if (ENUM=="Eco") {
+     if  (ENUM=="Eco") {
     push("Eco", "SET_Power_Mode", 1)
      sendEvent(name: "Mode", value: "Eco")
     if (logEnable)log.debug"Eco()"
     }
-    if (ENUM=="Normal") {
-    push("Normal", "SET_Power_Mode", 2)
+   if  (ENUM=="Normal") {
+    push("Normal", "SET_Power_Mode", 0)
      sendEvent(name: "Mode", value: "Normal")
     if (logEnable)log.debug"Normal()"
     }
-    if (ENUM=="High") {
-    push("High", "SET_Power_Mode", 3)
+     if  (ENUM=="Max") {
+    push("Max", "SET_Power_Mode", 2)
      sendEvent(name: "Mode", value: "High")
-     if (logEnable)log.debug"High()"
+     if (logEnable)log.debug"Max()"
      }
 }
 
