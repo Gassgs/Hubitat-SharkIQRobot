@@ -38,7 +38,7 @@ metadata {
         command"stop"
         command"pause"
         command "returnToBase"
-        command "Mode", [[name:"Powe Mode",   type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "High"]]]
+        command "Mode", [[name:"Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "High"]]]
    
         
         attribute "Mode", "text"
