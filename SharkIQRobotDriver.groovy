@@ -26,21 +26,20 @@ import groovy.json.*
 import java.util.regex.*
 
 metadata {
-    definition (name: "Shark IQ Robot-GG", namespace: "cstevens", author: "Chris Stevens") {
+    definition (name: "Shark IQ Robot-TestBot", namespace: "cstevens", author: "Chris Stevens") {
         capability "Switch"
         //capability "Momentary"
         capability "Actuator"
+        capability "Sensor"
+        capability "Battery"
+        capability "Refresh"
         
         command"start"
         command"stop"
         command"pause"
         command "returnToBase"
-        command "Eco"
-        command "Normal"
-        command "High"
-        
-        
-         
+        command "Mode", [[name:"Powe Mode",   type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "High"]]]
+   
         
         attribute "Mode", "text"
         attribute "Status", "text"
@@ -123,22 +122,26 @@ def off(){
 }
 
 
-def Eco() {
+def Mode(ENUM){
+    if (ENUM=="Eco") {
     push("Eco", "SET_Power_Mode", 1)
      sendEvent(name: "Mode", value: "Eco")
     if (logEnable)log.debug"Eco()"
     }
-  
-def Normal() {
+    if (ENUM=="Normal") {
     push("Normal", "SET_Power_Mode", 2)
      sendEvent(name: "Mode", value: "Normal")
     if (logEnable)log.debug"Normal()"
     }
-    
- def High() {
+    if (ENUM=="High") {
     push("High", "SET_Power_Mode", 3)
      sendEvent(name: "Mode", value: "High")
      if (logEnable)log.debug"High()"
+     }
+}
+
+def refresh(){
+    getDevices()
 }
 
 def login() {
