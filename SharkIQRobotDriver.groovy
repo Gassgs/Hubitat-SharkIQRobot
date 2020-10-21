@@ -39,11 +39,13 @@ metadata {
         command"pause"
         command "returnToBase"
         command "Mode", [[name:"Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "Max"]]]
-   
+        command"locate"
+        
         
         attribute "Mode", "text"
         attribute "Status", "text"
         attribute "speed","enum"
+        attribute "Locate", "text"
     }
     
  
@@ -82,8 +84,8 @@ def push(String action, String operation, Integer operationValue) {
 }
  
    def toggleOff() {
-    sendEvent(name: "switch", value: "off", isStateChange: true)
-       if (logEnable)log.debug"toggleOff()"
+    sendEvent(name: "Locate", value: "done", isStateChange: true)
+       if (logEnable)log.debug"LocateOff()"
 }
  
 def start() {
@@ -144,6 +146,14 @@ def Mode(ENUM){
      }
 }
 
+def locate() {
+    push("locate", "SET_Find_Device", 1)
+    sendEvent(name: "Locate", value: "locating", isStateChange: true)
+     if (logEnable)log.debug"locate()"
+    runIn(4,toggleOff)
+
+}
+    
 //added for Google home - Fan/power mode- support
 def setSpeed(fanspeed){
     if  (fanspeed=="low") {
@@ -164,7 +174,7 @@ def setSpeed(fanspeed){
      sendEvent(name: "speed", value: "high",isStateChange: true)
      if (logEnable)log.debug"Max()"     
 }
-
+    
 }
 def login() {
     def localDevicePort = (devicePort==null) ? "80" : devicePort
