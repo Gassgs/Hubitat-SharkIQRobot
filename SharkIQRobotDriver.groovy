@@ -19,163 +19,231 @@
  *    2020-02-13  Chris Stevens  Original Creation
  *    2020-10-16  Chris Stevens  Initial 'Public' Release
  *    2020-10-17  Chris Stevens  Revision for newer AlyaNetworks API endpoints - Support for Multi Devices (Just create Multiple Drivers) - Spoof iOS or Android Devices when making API calls.
+ *    2020-10-21  Chris Stevens  Toggle for Debug Logging - Shark States - Some code cleanup
+ *    2020-10-22  Chris Stevens  Add Refresh - Re-add Switch - Optimize State API Calls
+ *    2020-10-23  Chris Stevens  Added "*Last_Refreshed" State
  *
  */
 
 import groovy.json.*
 import java.util.regex.*
+import java.text.SimpleDateFormat
 
 metadata {
-    definition (name: "Shark IQ -TestBot", namespace: "cstevens", author: "Chris Stevens") {
+    definition (name: "Shark IQ Robot", namespace: "cstevens", author: "Chris Stevens") {    
         capability "Switch"
-        //capability "Momentary"
-        capability "Actuator"
-        capability "Sensor"
-        capability "Battery"
-        capability "FanControl"
+        capability "Refresh"
+        command "pause"
+       // command "stop"
+        command "locate"
+        command "grabSharkInfo"
+        command "setPowerMode", [[name:"Set Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "Max"]]]
+
+        attribute "Battery_Level", "integer"
+        attribute "Operating_Mode", "text"
+        attribute "Power_Mode", "text"
+        //attribute "Charging_Status", "text"
+        attribute "Error_Code","text"
+        attribute "*Last_Refreshed","text"
         
-        command"start"
-        command"stop"
-        command"pause"
-        command "returnToBase"
-        command "Mode", [[name:"Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "Max"]]]
-        command"locate"
-        
-        
-        attribute "Mode", "text"
-        attribute "Status", "text"
-        attribute "speed","enum"
-        attribute "Locate", "text"
     }
-    
- 
  
     preferences {
-        input(name: "loginusername", type: "string", title:"Email", description: "Shark Account Email Address", required: true, displayDuringSetup: true)
-        input(name: "loginpassword", type: "password", title:"Password", description: "Shark Account Password", required: true, displayDuringSetup: true)
-        input(name: "sharkdevicename", type: "string", title:"Device Name", description: "Name you've given your Shark Device within the App", required: true, displayDuringSetup: true)
-        input(name: "mobiletype", type: "enum", title:"Mobile Device", description: "Type of Mobile Device your Shark is setup on", required: true, displayDuringSetup: true, options:["Apple iOS", "Android OS"])
-          input name: "dockEnable", type: "bool", title: "Enable for *OFF = Return fo base * Default is *OFF = Stop*", defaultValue: false
-          input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+        input(name: "loginusername", type: "string", title: "Email", description: "Shark Account Email Address", required: true, displayDuringSetup: true)
+        input(name: "loginpassword", type: "password", title: "Password", description: "Shark Account Password", required: true, displayDuringSetup: true)
+        input(name: "sharkdevicename", type: "string", title: "Device Name", description: "Name you've given your Shark Device within the App", required: true, displayDuringSetup: true)
+        input(name: "mobiletype", type: "enum", title: "Mobile Device", description: "Type of Mobile Device your Shark is setup on", required: true, displayDuringSetup: true, options:["Apple iOS", "Android OS"])
+        input(name: "refreshEnable", type: "bool", title: "Enable Refresh Interval", description: "If enabling, after you click 'Save Preferences', click the 'Refresh' button to start the schedule.", defaultValue: false)
+        input(name: "refreshInterval", type: "integer", title: "Refresh Interval", description: "Number of seconds between State Refreshes", required: true, displayDuringSetup: true, defaultValue: 60)
+        input(name: "debugEnable", type: "bool", title: "Enable Debug Logging", defaultValue: true)
     }
 }
 
-def logsOff() {
-    log.warn "debug logging disabled..."
-    device.updateSetting("logEnable", [value: "false", type: "bool"])
-}
-def dockOff() {
-    log.warn "dock off  disabled..."
-    device.updateSetting("dockEnable", [value: "false", type: "bool"])
-}
- 
-def parse(String description) {
-    if (logEnable)log.debug(description)
+def refresh() {
+    logging("d", "Refresh Triggered.")
+    grabStatusInfo()
+    if (refreshEnable)
+    {
+        logging("d", "Refresh scheduled in $refreshInterval seconds.")
+        runIn("$refreshInterval".toInteger(), refresh)
+    }
 }
  
-def push(String action, String operation, Integer operationValue) {
-    def authtoken = ''
-    def uuid = ''
-    def dsnForDevice = ''
-    login()
-    getDevices()
-    getUserProfile()
-    runCmd(action, operation, operationValue)
+def on() {
+    runPostDatapointsCmd("SET_Operating_Mode", 2)
+    sendEvent(name: "switch", value: "on")
+   runIn(5, refresh)
 }
  
-   def toggleOff() {
-    sendEvent(name: "Locate", value: "done", isStateChange: true)
-       if (logEnable)log.debug"LocateOff()"
+def off() {
+    def stopresults = runPostDatapointsCmd("SET_Operating_Mode", 3)
+    logging("d", "$stopresults")
+     sendEvent(name: "switch", value: "off")
+     runIn(5, grabStatusInfo)
 }
- 
-def start() {
-    push("start", "SET_Operating_Mode", 2)
-    sendEvent(name: "switch", value: "on", isStateChange: true)
-    sendEvent(name: "Status", value: "cleaning",isStateChange: true)
-     if (logEnable)log.debug"start()"
-}
- 
+
 def stop() {
-    push("stop", "SET_Operating_Mode", 0)
-    sendEvent(name: "switch", value: "off", isStateChange: true)
-    sendEvent(name: "Status", value: "idle",isStateChange: true)
-    if (logEnable)log.debug"stop()"
+     runPostDatapointsCmd("SET_Operating_Mode", 1)
+     runIn(5, grabStatusInfo)
 }
 
 def pause() {
-    push("pause", "SET_Operating_Mode", 1)
-     sendEvent(name: "Status", value: "idle",isStateChange: true)
-    if (logEnable)log.debug"pause()"
+    runPostDatapointsCmd("SET_Operating_Mode", 0)
+    sendEvent(name: "switch", value: "paused")
+     runIn(5, grabStatusInfo)
 }
 
-def returnToBase() {
-    push("return", "SET_Operating_Mode", 3)
-     sendEvent(name: "Status", value: "Dock",isStateChange: true)
-    sendEvent(name: "switch", value: "off",isStateChange: true)
-    if (logEnable)log.debug"returnToBase()"
-    
-}
-def on(){
-    start()
-}
-
-def off(){
-     if (dockEnable) returnToBase()
-    else stop()
-}
-
-
-def Mode(ENUM){
-     if  (ENUM=="Eco") {
-    push("Eco", "SET_Power_Mode", 1)
-     sendEvent(name: "Mode", value: "Eco",isStateChange: true)
-     sendEvent(name: "speed", value: "low",isStateChange: true)
-    if (logEnable)log.debug"Eco()"
-    }
-   if  (ENUM=="Normal") {
-    push("Normal", "SET_Power_Mode", 0)
-     sendEvent(name: "Mode", value: "Normal",isStateChange: true)
-     sendEvent(name: "speed", value: "medium",isStateChange: true)
-    if (logEnable)log.debug"Normal()"
-    }
-     if  (ENUM=="Max") {
-    push("Max", "SET_Power_Mode", 2)
-     sendEvent(name: "Mode", value: "Max",isStateChange: true)
-      sendEvent(name: "speed", value: "high",isStateChange: true)
-     if (logEnable)log.debug"Max()"
-     }
+def setPowerMode(String powermode) {
+    power_modes = ["Normal", "Eco", "Max"]
+    powermodeint = power_modes.indexOf(powermode)
+    if (powermodeint >= 0) { runPostDatapointsCmd("SET_Power_Mode", powermodeint) }
+     runIn(5, grabStatusInfo)
+   
 }
 
 def locate() {
-    push("locate", "SET_Find_Device", 1)
-    sendEvent(name: "Locate", value: "locating", isStateChange: true)
-     if (logEnable)log.debug"locate()"
-    runIn(4,toggleOff)
+    runPostDatapointsCmd("SET_Find_Device", 1)
+    
+}
 
-}
-    
-//added for Google home - Fan/power mode- support
-def setSpeed(fanspeed){
-    if  (fanspeed=="low") {
-      push("Eco", "SET_Power_Mode", 1)
-     sendEvent(name: "Mode", value: "Eco",isStateChange: true)
-     sendEvent(name: "speed", value: "low",isStateChange: true)
-    if (logEnable)log.debug"Eco()"
+
+
+
+def grabStatusInfo() {
+    propertiesResults = runGetPropertiesCmd("names[]=GET_Battery_Capacity&names[]=GET_Operating_Mode&names[]=GET_Power_Mode&names[]=GET_Error_Code&names")
+    propertiesResults.each { singleProperty ->
+        if (singleProperty.property.name == "GET_Battery_Capacity")
+        {
+            sendEvent(name: "Battery_Level", value: "$singleProperty.property.value", display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "GET_Operating_Mode")
+        {
+            operating_modes = ["Paused", "Stopped", "Running", "Return to Base"]
+            sendEvent(name: "Operating_Mode", value: operating_modes[singleProperty.property.value], display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "GET_Power_Mode")
+        {
+            power_modes = ["Normal", "Eco", "Max"]
+            sendEvent(name: "Power_Mode", value: power_modes[singleProperty.property.value], display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "GET_Error_Code")
+        {
+            error_codes = ["No error", "Side wheel is stuck","Side brush is stuck","Suction motor failed","Brushroll stuck","Side wheel is stuck (2)","Bumper is stuck","Cliff sensor is blocked","Battery power is low","No Dustbin","Fall sensor is blocked","Front wheel is stuck","Switched off","Magnetic strip error","Top bumper is stuck","Wheel encoder error"]
+            sendEvent(name: "Error_Code", value: error_codes[singleProperty.property.value], display: true, displayed: true)
+        }
     }
-       if  (fanspeed=="medium") {  
-      push("Normal", "SET_Power_Mode", 0)
-     sendEvent(name: "Mode", value: "Normal",isStateChange: true)
-      sendEvent(name: "speed", value: "medium",isStateChange: true)
-    if (logEnable)log.debug"Normal()"
-       }
-    if  (fanspeed=="high") {  
-       push("Max", "SET_Power_Mode", 2)
-     sendEvent(name: "Mode", value: "Max",isStateChange: true)
-     sendEvent(name: "speed", value: "high",isStateChange: true)
-     if (logEnable)log.debug"Max()"     
 }
-    
+
+
+def grabSharkInfo() {
+    propertiesResults = runGetPropertiesCmd("names[]=GET_Battery_Capacity&names[]=GET_Operating_Mode&names[]=GET_Power_Mode&names[]=GET_RSSI&names[]=GET_Error_Code&names[]=GET_Robot_Volume_Setting&names[]=OTA_FW_VERSION")
+    propertiesResults.each { singleProperty ->
+        if (singleProperty.property.name == "GET_Battery_Capacity")
+        {
+            sendEvent(name: "Battery_Level", value: "$singleProperty.property.value", display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "GET_Operating_Mode")
+        {
+            operating_modes = ["Paused", "Stopped", "Running", "Return to Base"]
+            sendEvent(name: "Operating_Mode", value: operating_modes[singleProperty.property.value], display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "GET_Power_Mode")
+        {
+            power_modes = ["Normal", "Eco", "Max"]
+            sendEvent(name: "Power_Mode", value: power_modes[singleProperty.property.value], display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "GET_RSSI")
+        {
+            sendEvent(name: "RSSI", value: "$singleProperty.property.value", display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "GET_Error_Code")
+        {
+            error_codes = ["No error", "Side wheel is stuck","Side brush is stuck","Suction motor failed","Brushroll stuck","Side wheel is stuck (2)","Bumper is stuck","Cliff sensor is blocked","Battery power is low","No Dustbin","Fall sensor is blocked","Front wheel is stuck","Switched off","Magnetic strip error","Top bumper is stuck","Wheel encoder error"]
+            sendEvent(name: "Error_Code", value: error_codes[singleProperty.property.value], display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "GET_Robot_Volume_Setting")
+        {
+            sendEvent(name: "Robot_Volume", value: "$singleProperty.property.value", display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "OTA_FW_VERSION")
+        {
+            sendEvent(name: "Firmware_Version", value: "$singleProperty.property.value", display: true, displayed: true)
+        }
+    }
+    def date = new Date()
+    sendEvent(name: "*Last_Refreshed", value: "$date", display: true, displayed: true)
 }
+
+def initialLogin() {
+    login()
+    getDevices()
+    getUserProfile()
+}
+
+def runPostDatapointsCmd(String operation, Integer operationValue) {
+    initialLogin()
+    def localDevicePort = (devicePort==null) ? "80" : devicePort
+	def params = [
+        uri: "https://ads-field.aylanetworks.com",
+		path: "/apiv1/dsns/$dsnForDevice/properties/$operation/datapoints.json",
+        requestContentType: "application/json",
+        headers: ["Content-Type": "application/json", "Accept": "*/*", "Authorization": "auth_token $authtoken"],
+        body: "{\"datapoint\":{\"value\":\"$operationValue\",\"metadata\":{\"userUUID\":\"$uuid\"}}}"
+    ]
+    performHttpPost(params)
+}
+
+def runGetPropertiesCmd(String operation) {
+    initialLogin()
+    def localDevicePort = (devicePort==null) ? "80" : devicePort
+	def params = [
+        uri: "https://ads-field.aylanetworks.com",
+		path: "/apiv1/dsns/$dsnForDevice/properties.json",
+        requestContentType: "application/json",
+        headers: ["Content-Type": "application/json", "Accept": "*/*", "Authorization": "auth_token $authtoken"],
+        queryString: "$operation".toString()
+    ]
+    performHttpGet(params)
+}
+
+private performHttpPost(params) {
+    try {
+        httpPost(params) { response ->
+            if(response.getStatus() == 200 || response.getStatus() == 201) {
+                results = response.data
+                logging("d", "Response received from Shark in the postResponseHandler. $response.data")
+            }
+            else {
+                logging("e", "Shark failed. Shark returned ${response.getStatus()}.")
+                logging("e", "Error = ${response.getErrorData()}")
+            }
+        }
+    } 
+    catch (e) {
+        logging("e", "Error during performHttpPost: $e")
+    }
+    return results
+}
+
+private performHttpGet(params) {
+    try {
+        httpGet(params) { response ->
+            if(response.getStatus() == 200 || response.getStatus() == 201) {
+                results = response.data
+                logging("d", "Response received from Shark in the getResponseHandler. $response.data")
+            }
+            else {
+                logging("e", "Shark failed. Shark returned ${response.getStatus()}.")
+                logging("e", "Error = ${response.getErrorData()}")
+            }
+        }
+    } 
+    catch (e) {
+        logging("e", "Error during performHttpGet: $e")
+    }
+    return results
+}
+
 def login() {
     def localDevicePort = (devicePort==null) ? "80" : devicePort
     def app_id = ""
@@ -199,20 +267,20 @@ def login() {
         body: "$body"
     ]
     try {
-    httpPost(params) { response ->
-        
-        if(response.getStatus() == 200 || response.getStatus() == 201) {
-			if (logEnable)log.debug "Response received from Shark in the postReponseHandler. $response.data"
-            def accesstokenstring = ("$response.data" =~ /access_token:([A-Za-z0-9]*.*?)/)
-            authtoken = accesstokenstring[0][1]
-    	}
-        else {
-    		if (logEnable)log.error "Shark failed. Shark returned ${response.getStatus()}."
-        	if (logEnable)log.error "Error = ${response.getErrorData()}"
-    	}
-    }
+        httpPost(params) { response ->
+            if(response.getStatus() == 200 || response.getStatus() == 201) {
+                logging("d","Response received from Shark in the postResponseHandler. $response.data")
+                def accesstokenstring = ("$response.data" =~ /access_token:([A-Za-z0-9]*.*?)/)
+                authtoken = accesstokenstring[0][1]
+                return response
+            }
+            else {
+                logging("e","Shark failed. Shark returned ${response.getStatus()}.")
+                logging("e","Error = ${response.getErrorData()}")
+            }
+        }
     } catch (e) {
-    	if (logEnable)log.error "Error during login: $e"
+    	logging("e", "Error during login: $e")
 	}
 }
 
@@ -223,20 +291,20 @@ def getUserProfile() {
         headers: ["Content-Type": "application/json", "Accept": "*/*", "Authorization": "auth_token $authtoken"],
     ]
     try {
-    httpGet(params) { response ->
-        
-        if(response.getStatus() == 200 || response.getStatus() == 201) {
-			if (logEnable)log.debug "Response received from Shark in the postReponseHandler. $response.data"
-            def uuidstring = ("$response.data" =~ /uuid:([A-Za-z0-9-]*.*?)/)
-            uuid = uuidstring[0][1]
-    	}
-        else {
-    		if (logEnable)log.error "Shark failed. Shark returned ${response.getStatus()}."
-        	if (logEnable)log.error "Error = ${response.getErrorData()}"
-    	}
-    }
+        httpGet(params) { response ->
+            if(response.getStatus() == 200 || response.getStatus() == 201) {
+                logging("d","Response received from Shark in the postResponseHandler. $response.data")
+                def uuidstring = ("$response.data" =~ /uuid:([A-Za-z0-9-]*.*?)/)
+                uuid = uuidstring[0][1]
+                return response
+            }
+            else {
+                logging("e", "Shark failed. Shark returned ${response.getStatus()}.")
+                logging("e", "Error = ${response.getErrorData()}")
+            }
+        }
     } catch (e) {
-    	if (logEnable)log.error "Error during getUserProfile: $e"
+    	logging("e", "Error during getUserProfile: $e")
 	}
 
 }
@@ -248,54 +316,39 @@ def getDevices() {
         headers: ["Content-Type": "application/json", "Accept": "*/*", "Authorization": "auth_token $authtoken"],
     ]
     try {
-    httpGet(params) { response ->
-        if(response.getStatus() == 200 || response.getStatus() == 201) {
-			if (logEnable)log.debug "Response received from Shark in the postReponseHandler. $response.data"
-            def devicedsn = ""
-            for (devices in response.data.device ) {
-                if ("$sharkdevicename" == "${devices.product_name}")
-                {   
-                    dsnForDevice = "${devices.dsn}"
+        httpGet(params) { response ->
+            if(response.getStatus() == 200 || response.getStatus() == 201) {
+                logging("d", "Response received from Shark in the postResponseHandler. $response.data")
+                def devicedsn = ""
+                for (devices in response.data.device ) {
+                    if ("$sharkdevicename" == "${devices.product_name}")
+                    {   
+                        dsnForDevice = "${devices.dsn}"
+                    }
                 }
+                if ("$dsnForDevice" == '')
+                {
+                    logging("e", "$sharkdevicename did not match any product_name on your account. Please verify your `Device Name`.")
+                }
+                return response
             }
-            if ("$dsnForDevice" == '')
-            {
-                if (logEnable)log.error "$sharkdevicename did not match any product_name on your account. Please verify your `Device Name`."
+            else {
+                logging("e", "Shark failed. Shark returned ${response.getStatus()}.")
+                logging("e", "Error = ${response.getErrorData()}")
             }
-    	}
-        else {
-    		if (logEnable)log.error "Shark failed. Shark returned ${response.getStatus()}."
-        	if (logEnable)log.error "Error = ${response.getErrorData()}"
-    	}
-    }
+        }
     } catch (e) {
-    	if (logEnable)log.error "Error during getDevices: $e"
+    	logging("e", "Error during getDevices: $e")
 	}
 
 }
- 
-def runCmd(String action, String operation, Integer operationValue) {
-    def localDevicePort = (devicePort==null) ? "80" : devicePort
-	def params = [
-        uri: "https://ads-field.aylanetworks.com",
-		path: "/apiv1/dsns/$dsnForDevice/properties/$operation/datapoints.json",
-        requestContentType: "application/json",
-        headers: ["Content-Type": "application/json", "Accept": "*/*", "Authorization": "auth_token $authtoken"],
-        body: "{\"datapoint\":{\"value\":\"$operationValue\",\"metadata\":{\"userUUID\":\"$uuid\"}}}"
-    ]
-    if (logEnable)log.debug "$params"
-    try {
-    httpPost(params) { response ->
-        
-        if(response.getStatus() == 200 || response.getStatus() == 201) {
-			if (logEnable)log.debug "Response received from Shark in the postReponseHandler. $response"
-    	}
-        else {
-    		if (logEnable)log.error "Shark failed. Shark returned ${response.getStatus()}."
-        	if (logEnable)log.error "Error = ${response.getErrorData()}"
-    	}
-    }
-    } catch (e) {
-    	if (logEnable)log.error "Error during runCmd: $e"
-	}
+
+/********************************************
+*** HELPER METHODS
+********************************************/
+
+def logging(String status, String description) {
+    if (debugEnable && status == "d"){ log.debug(description) }
+    else if (status == "w"){ log.warn(description) }
+    else if (status == "e"){ log.error(description) }
 }
