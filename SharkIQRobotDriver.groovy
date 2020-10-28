@@ -21,7 +21,7 @@
  *    2020-10-17  Chris Stevens  Revision for newer AlyaNetworks API endpoints - Support for Multi Devices (Just create Multiple Drivers) - Spoof iOS or Android Devices when making API calls.
  *    2020-10-21  Chris Stevens  Toggle for Debug Logging - Shark States - Some code cleanup
  *    2020-10-22  Chris Stevens  Add Refresh - Re-add Switch - Optimize State API Calls
- *    2020-10-23  Chris Stevens  Added "*Last_Refreshed" State
+ *    2020-10-23  Chris Stevens  Added "Last_Refreshed" State, Smart Refresh, Recharging_To_Resume State, Charging_Status State, Additional Operating_Mode State values, and Slight Delay when getting Refresh After Triggering Button. Also fixed the Pause Button and Last_Refreshed State, and removed the Stop Button.
  *
  */
 
@@ -30,22 +30,24 @@ import java.util.regex.*
 import java.text.SimpleDateFormat
 
 metadata {
-    definition (name: "Shark IQ Robot", namespace: "cstevens", author: "Chris Stevens") {    
-        capability "Switch"
+    definition (name: "Shark IQ Robot", namespace: "cstevens", author: "Chris Stevens", importUrl: "https://raw.githubusercontent.com/TheChrisTech/Hubitat-SharkIQRobot/master/SharkIQRobotDriver.groovy") {  
         capability "Refresh"
+        capability"Actuator"
         command "pause"
-       // command "stop"
-        command "locate"
-        command "grabSharkInfo"
-        command "setPowerMode", [[name:"Set Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "Max"]]]
-
+         command "on"
+         command "off"
+         command "setPowerMode", [[name:"Set Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "Max"]]]
+         command "locate"
+        
+        
         attribute "Battery_Level", "integer"
         attribute "Operating_Mode", "text"
         attribute "Power_Mode", "text"
-        //attribute "Charging_Status", "text"
+        attribute "Charging_Status", "text"
         attribute "Error_Code","text"
-        attribute "*Last_Refreshed","text"
-        
+        attribute "Last_Refreshed","text"
+        attribute "Recharging_To_Resume","text"
+        attribute"Locate","text"
     }
  
     preferences {
@@ -53,125 +55,137 @@ metadata {
         input(name: "loginpassword", type: "password", title: "Password", description: "Shark Account Password", required: true, displayDuringSetup: true)
         input(name: "sharkdevicename", type: "string", title: "Device Name", description: "Name you've given your Shark Device within the App", required: true, displayDuringSetup: true)
         input(name: "mobiletype", type: "enum", title: "Mobile Device", description: "Type of Mobile Device your Shark is setup on", required: true, displayDuringSetup: true, options:["Apple iOS", "Android OS"])
-        input(name: "refreshEnable", type: "bool", title: "Enable Refresh Interval", description: "If enabling, after you click 'Save Preferences', click the 'Refresh' button to start the schedule.", defaultValue: false)
+        input(name: "refreshEnable", type: "bool", title: "Scheduled State Refresh", description: "If enabled, after you click 'Save Preferences', click the 'Refresh' button to start the schedule.", defaultValue: false)
         input(name: "refreshInterval", type: "integer", title: "Refresh Interval", description: "Number of seconds between State Refreshes", required: true, displayDuringSetup: true, defaultValue: 60)
+        input(name: "smartRefresh", type: "bool", title: "Smart State Refresh", description: "If enabled, will only refresh when vacuum is running (per interval), then every 5 minutes until Fully Charged. Takes precedence over Scheduled State Refresh.", required: true, displayDuringSetup: true, defaultValue: true)
         input(name: "debugEnable", type: "bool", title: "Enable Debug Logging", defaultValue: true)
     }
 }
 
 def refresh() {
     logging("d", "Refresh Triggered.")
-    grabStatusInfo()
-    if (refreshEnable)
+    grabSharkInfo()
+    if (smartRefresh) 
     {
-        logging("d", "Refresh scheduled in $refreshInterval seconds.")
+        if (operatingMode in ["Paused", "Running", "Returning to Dock", "Recharging to Continue"])
+        {
+            logging("d", "Refresh scheduled in $refreshInterval seconds.")
+            runIn("$refreshInterval".toInteger(), refresh)
+        }
+        else if (operatingMode in ["Charging on Dock"] && batteryCapacity.toString() != "100")
+        {
+            logging("d", "Refresh scheduled in 300 seconds.")
+            runIn(300, refresh)
+        }
+    }
+    else if (!smartRefresh && refreshEnable)
+    {
+        logging("d", "Refresh scheduled in $refreshInterval secondsaaa.")
         runIn("$refreshInterval".toInteger(), refresh)
     }
 }
  
 def on() {
     runPostDatapointsCmd("SET_Operating_Mode", 2)
-    sendEvent(name: "switch", value: "on")
-   runIn(5, refresh)
+    runIn(10, refresh)
 }
  
 def off() {
     def stopresults = runPostDatapointsCmd("SET_Operating_Mode", 3)
     logging("d", "$stopresults")
-     sendEvent(name: "switch", value: "off")
-     runIn(5, grabStatusInfo)
-}
-
-def stop() {
-     runPostDatapointsCmd("SET_Operating_Mode", 1)
-     runIn(5, grabStatusInfo)
+    runIn(10, refresh)
 }
 
 def pause() {
     runPostDatapointsCmd("SET_Operating_Mode", 0)
-    sendEvent(name: "switch", value: "paused")
-     runIn(5, grabStatusInfo)
+    runIn(10, refresh)
 }
 
 def setPowerMode(String powermode) {
     power_modes = ["Normal", "Eco", "Max"]
     powermodeint = power_modes.indexOf(powermode)
     if (powermodeint >= 0) { runPostDatapointsCmd("SET_Power_Mode", powermodeint) }
-     runIn(5, grabStatusInfo)
-   
+    runIn(10, refresh)
 }
 
 def locate() {
     runPostDatapointsCmd("SET_Find_Device", 1)
-    
+    sendEvent(name:"Locate",value:"active")
+    runIn(3,locateOff)
+    runIn(10, refresh)
 }
 
-
-
-
-def grabStatusInfo() {
-    propertiesResults = runGetPropertiesCmd("names[]=GET_Battery_Capacity&names[]=GET_Operating_Mode&names[]=GET_Power_Mode&names[]=GET_Error_Code&names")
-    propertiesResults.each { singleProperty ->
-        if (singleProperty.property.name == "GET_Battery_Capacity")
-        {
-            sendEvent(name: "Battery_Level", value: "$singleProperty.property.value", display: true, displayed: true)
-        }
-        else if (singleProperty.property.name == "GET_Operating_Mode")
-        {
-            operating_modes = ["Paused", "Stopped", "Running", "Return to Base"]
-            sendEvent(name: "Operating_Mode", value: operating_modes[singleProperty.property.value], display: true, displayed: true)
-        }
-        else if (singleProperty.property.name == "GET_Power_Mode")
-        {
-            power_modes = ["Normal", "Eco", "Max"]
-            sendEvent(name: "Power_Mode", value: power_modes[singleProperty.property.value], display: true, displayed: true)
-        }
-        else if (singleProperty.property.name == "GET_Error_Code")
-        {
-            error_codes = ["No error", "Side wheel is stuck","Side brush is stuck","Suction motor failed","Brushroll stuck","Side wheel is stuck (2)","Bumper is stuck","Cliff sensor is blocked","Battery power is low","No Dustbin","Fall sensor is blocked","Front wheel is stuck","Switched off","Magnetic strip error","Top bumper is stuck","Wheel encoder error"]
-            sendEvent(name: "Error_Code", value: error_codes[singleProperty.property.value], display: true, displayed: true)
-        }
-    }
+def locateOff() {
+    sendEvent(name:"Locate",value:"not active")
 }
-
 
 def grabSharkInfo() {
-    propertiesResults = runGetPropertiesCmd("names[]=GET_Battery_Capacity&names[]=GET_Operating_Mode&names[]=GET_Power_Mode&names[]=GET_RSSI&names[]=GET_Error_Code&names[]=GET_Robot_Volume_Setting&names[]=OTA_FW_VERSION")
+    propertiesResults = runGetPropertiesCmd("names[]=GET_Battery_Capacity&names[]=GET_Recharging_To_Resume&names[]=GET_Charging_Status&names[]=GET_Operating_Mode&names[]=GET_Power_Mode&names[]=GET_Error_Code&names")
     propertiesResults.each { singleProperty ->
         if (singleProperty.property.name == "GET_Battery_Capacity")
         {
             sendEvent(name: "Battery_Level", value: "$singleProperty.property.value", display: true, displayed: true)
+            batteryCapacity = singleProperty.property.value
+        }
+        else if (singleProperty.property.name == "GET_Recharging_To_Resume")
+        {
+            recharging_resume = ["False", "True"]
+            sendEvent(name: "Recharging_To_Resume", value: recharging_resume[singleProperty.property.value], display: true, displayed: true)
+        }
+        else if (singleProperty.property.name == "GET_Charging_Status")
+        {
+            chargingStatusValue = singleProperty.property.value
         }
         else if (singleProperty.property.name == "GET_Operating_Mode")
         {
-            operating_modes = ["Paused", "Stopped", "Running", "Return to Base"]
-            sendEvent(name: "Operating_Mode", value: operating_modes[singleProperty.property.value], display: true, displayed: true)
+            operatingModeValue = singleProperty.property.value
         }
         else if (singleProperty.property.name == "GET_Power_Mode")
         {
             power_modes = ["Normal", "Eco", "Max"]
             sendEvent(name: "Power_Mode", value: power_modes[singleProperty.property.value], display: true, displayed: true)
         }
-        else if (singleProperty.property.name == "GET_RSSI")
-        {
-            sendEvent(name: "RSSI", value: "$singleProperty.property.value", display: true, displayed: true)
-        }
         else if (singleProperty.property.name == "GET_Error_Code")
         {
             error_codes = ["No error", "Side wheel is stuck","Side brush is stuck","Suction motor failed","Brushroll stuck","Side wheel is stuck (2)","Bumper is stuck","Cliff sensor is blocked","Battery power is low","No Dustbin","Fall sensor is blocked","Front wheel is stuck","Switched off","Magnetic strip error","Top bumper is stuck","Wheel encoder error"]
             sendEvent(name: "Error_Code", value: error_codes[singleProperty.property.value], display: true, displayed: true)
         }
-        else if (singleProperty.property.name == "GET_Robot_Volume_Setting")
-        {
-            sendEvent(name: "Robot_Volume", value: "$singleProperty.property.value", display: true, displayed: true)
+    }
+
+    // Charging Status
+    charging_status = ["Not Charging", "Charging"]
+    if (device.currentValue('Battery_Level') == "100" && chargingStatusValue == "0") {
+        chargingStatusToSend = "Fully Charged" 
+    }
+    else {
+        chargingStatusToSend = charging_status[chargingStatusValue]
+    }
+    sendEvent(name: "Charging_Status", value: chargingStatusToSend, display: true, displayed: true)
+
+    // Operating Mode
+    operating_modes = ["Paused", "Stopped", "Running", "Returning to Dock"]
+    if (device.currentValue('Recharging_To_Resume') == "True" && operatingModeValue.toString() == "3") { 
+        operatingModeToSend = "Recharging to Continue" 
+    }
+    else if (device.currentValue('Recharging_To_Resume') == "False" && operatingModeValue.toString() == "3") {
+        if (device.currentValue('Charging_Status') == "Fully Charged") {
+            operatingModeToSend = "Resting on Dock" 
         }
-        else if (singleProperty.property.name == "OTA_FW_VERSION")
-        {
-            sendEvent(name: "Firmware_Version", value: "$singleProperty.property.value", display: true, displayed: true)
+        else if (device.currentValue('Charging_Status') == "Charging"){
+            operatingModeToSend = "Charging on Dock" 
+        }
+        else {
+            operatingModeToSend = "Returning to Dock" 
         }
     }
+    else {
+        operatingModeToSend = operating_modes[operatingModeValue] 
+    }
+    sendEvent(name: "Operating_Mode", value: operatingModeToSend, display: true, displayed: true)
+    operatingMode = operatingModeToSend
+
     def date = new Date()
-    sendEvent(name: "*Last_Refreshed", value: "$date", display: true, displayed: true)
+    sendEvent(name: "Last_Refreshed", value: "$date", display: true, displayed: true)
 }
 
 def initialLogin() {
