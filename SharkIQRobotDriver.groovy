@@ -30,7 +30,7 @@ import java.util.regex.*
 import java.text.SimpleDateFormat
 
 metadata {
-    definition (name: "Shark IQ Robot", namespace: "cstevens", author: "Chris Stevens", importUrl: "https://raw.githubusercontent.com/TheChrisTech/Hubitat-SharkIQRobot/master/SharkIQRobotDriver.groovy") {  
+    definition (name: "Shark IQ Robot Mod", namespace: "cstevens GG", author: "Chris Stevens", importUrl: "https://raw.githubusercontent.com/TheChrisTech/Hubitat-SharkIQRobot/master/SharkIQRobotDriver.groovy") {  
         capability "Refresh"
         capability"Actuator"
         command "pause"
@@ -87,17 +87,20 @@ def refresh() {
  
 def on() {
     runPostDatapointsCmd("SET_Operating_Mode", 2)
+     sendEvent(name:"Operating_Mode",value:"Running")
     runIn(10, refresh)
 }
  
 def off() {
     def stopresults = runPostDatapointsCmd("SET_Operating_Mode", 3)
+     sendEvent(name:"Operating_Mode",value:"Retun ing to Dock")
     logging("d", "$stopresults")
     runIn(10, refresh)
 }
 
 def pause() {
     runPostDatapointsCmd("SET_Operating_Mode", 0)
+    sendEvent(name:"Operating_Mode",value:"Paused")
     runIn(10, refresh)
 }
 
