@@ -1,7 +1,7 @@
 /**
- *  Shark IQ Robot
+ *  Shark IQ Robot 2
  *
- *  Copyright 2020 Chris Stevens
+ *  Copyright 2021 Chris Stevens
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -11,17 +11,11 @@
  *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
+ *  
+ *  GitHub link: https://github.com/TheChrisTech/Hubitat-SharkIQRobot
  *
- *  Change History:
- *
- *    Date        Who            What
- *    ----        ---            ----
- *    2020-02-13  Chris Stevens  Original Creation
- *    2020-10-16  Chris Stevens  Initial 'Public' Release
- *    2020-10-17  Chris Stevens  Revision for newer AlyaNetworks API endpoints - Support for Multi Devices (Just create Multiple Drivers) - Spoof iOS or Android Devices when making API calls.
- *    2020-10-21  Chris Stevens  Toggle for Debug Logging - Shark States - Some code cleanup
- *    2020-10-22  Chris Stevens  Add Refresh - Re-add Switch - Optimize State API Calls
- *    2020-10-23  Chris Stevens  Added "Last_Refreshed" State, Smart Refresh, Recharging_To_Resume State, Charging_Status State, Additional Operating_Mode State values, and Slight Delay when getting Refresh After Triggering Button. Also fixed the Pause Button and Last_Refreshed State, and removed the Stop Button.
+ *  Readme is outlined in README.md
+ *  Change History is outlined in CHANGELOG.md
  *
  */
 
@@ -30,24 +24,26 @@ import java.util.regex.*
 import java.text.SimpleDateFormat
 
 metadata {
-    definition (name: "Shark IQ Robot Mod", namespace: "cstevens GG", author: "Chris Stevens", importUrl: "https://raw.githubusercontent.com/TheChrisTech/Hubitat-SharkIQRobot/master/SharkIQRobotDriver.groovy") {  
+    definition (name: "Shark IQ Robot 2", namespace: "cstevens", author: "Chris Stevens") {    
+        capability "Actuator"
+        capability "Switch"
         capability "Refresh"
-        capability"Actuator"
+        command "start"
+        command "returnToDock"
         command "pause"
-         command "on"
-         command "off"
-         command "setPowerMode", [[name:"Set Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "Max"]]]
-         command "locate"
-        
-        
+        command "locate"
+        command "setPowerMode", [[name:"Set Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "Max"]]]
+
         attribute "Battery_Level", "integer"
         attribute "Operating_Mode", "text"
         attribute "Power_Mode", "text"
         attribute "Charging_Status", "text"
+        //attribute "RSSI", "text"
         attribute "Error_Code","text"
+        attribute "Robot_Volume","text"
+        //attribute "Firmware_Version","text"
         attribute "Last_Refreshed","text"
-        attribute "Recharging_To_Resume","text"
-        attribute"Locate","text"
+        //attribute "Recharging_To_Resume","text"
     }
  
     preferences {
@@ -84,16 +80,36 @@ def refresh() {
         runIn("$refreshInterval".toInteger(), refresh)
     }
 }
+
+def locate() {
+     runPostDatapointsCmd("SET_Find_Device", 1)
+    sendEvent(name:"Locate",value:"active")
+    runIn(3,locateOff)
+    runIn(10, refresh)
+}
+
+def locateOff() {
+    sendEvent(name:"Locate",value:"not active")
+}
+
+def start(){
+    on()
+}
+
+def returnToDock(){
+    off()
+}
+
  
 def on() {
     runPostDatapointsCmd("SET_Operating_Mode", 2)
-     sendEvent(name:"Operating_Mode",value:"Running")
+    sendEvent(name:"Operating_Mode",value:"Running")
     runIn(10, refresh)
 }
  
 def off() {
     def stopresults = runPostDatapointsCmd("SET_Operating_Mode", 3)
-     sendEvent(name:"Operating_Mode",value:"Retun ing to Dock")
+    sendEvent(name:"Operating_Mode",value:"Returning to Dock")
     logging("d", "$stopresults")
     runIn(10, refresh)
 }
@@ -109,17 +125,6 @@ def setPowerMode(String powermode) {
     powermodeint = power_modes.indexOf(powermode)
     if (powermodeint >= 0) { runPostDatapointsCmd("SET_Power_Mode", powermodeint) }
     runIn(10, refresh)
-}
-
-def locate() {
-    runPostDatapointsCmd("SET_Find_Device", 1)
-    sendEvent(name:"Locate",value:"active")
-    runIn(3,locateOff)
-    runIn(10, refresh)
-}
-
-def locateOff() {
-    sendEvent(name:"Locate",value:"not active")
 }
 
 def grabSharkInfo() {
@@ -156,8 +161,9 @@ def grabSharkInfo() {
     }
 
     // Charging Status
+    // chargingStatusValue - 0 = NOT CHARGING, 1 = CHARGING
     charging_status = ["Not Charging", "Charging"]
-    if (device.currentValue('Battery_Level') == "100" && chargingStatusValue == "0") {
+    if (device.currentValue('Battery_Level') == "100") {
         chargingStatusToSend = "Fully Charged" 
     }
     else {
@@ -165,17 +171,20 @@ def grabSharkInfo() {
     }
     sendEvent(name: "Charging_Status", value: chargingStatusToSend, display: true, displayed: true)
 
-    // Operating Mode
+    // Operating Mode 
+    // operatingModeValue - 0 = STOPPED, 1 = PAUSED, 2 = ON, 3 = OFF
     operating_modes = ["Paused", "Stopped", "Running", "Returning to Dock"]
     if (device.currentValue('Recharging_To_Resume') == "True" && operatingModeValue.toString() == "3") { 
         operatingModeToSend = "Recharging to Continue" 
     }
-    else if (device.currentValue('Recharging_To_Resume') == "False" && operatingModeValue.toString() == "3") {
+    else if  (operatingModeValue.toString() == "3") {
         if (device.currentValue('Charging_Status') == "Fully Charged") {
-            operatingModeToSend = "Resting on Dock" 
+            operatingModeToSend = " Docked" 
+            sendEvent(name:"switch",value:"off")
         }
         else if (device.currentValue('Charging_Status') == "Charging"){
-            operatingModeToSend = "Charging on Dock" 
+            operatingModeToSend = "Docked" 
+            sendEvent(name:"switch",value:"off")
         }
         else {
             operatingModeToSend = "Returning to Dock" 
@@ -183,6 +192,9 @@ def grabSharkInfo() {
     }
     else {
         operatingModeToSend = operating_modes[operatingModeValue] 
+        if (operatingModeValue.toString() == "2") { 
+         sendEvent(name:"switch",value:"on")
+        }
     }
     sendEvent(name: "Operating_Mode", value: operatingModeToSend, display: true, displayed: true)
     operatingMode = operatingModeToSend
