@@ -1,5 +1,5 @@
 /**
- *  Shark IQ Robot 2 For older firmware robots
+ *  Shark IQ Robot 2
  *
  *  Copyright 2021 Chris Stevens
  *
@@ -53,8 +53,8 @@ metadata {
         input(name: "sharkdevicename", type: "string", title: "Device Name", description: "Name you've given your Shark Device within the App", required: true, displayDuringSetup: true)
         input(name: "mobiletype", type: "enum", title: "Mobile Device", description: "Type of Mobile Device your Shark is setup on", required: true, displayDuringSetup: true, options:["Apple iOS", "Android OS"])
         input(name: "refreshInterval", type: "integer", title: "Refresh Interval", description: "Number of seconds between Smart State Refreshes", required: true, displayDuringSetup: true, defaultValue: 60)
-        input(name: "smartRefresh", type: "bool", title: "Smart State Refresh", description: "If Enabled, Vacuum will refresh (per interval) while running, then every 5 minutes until Fully Charged", required: true, displayDuringSetup: true, defaultValue: true)
-         input(name: "refreshEnable", type: "bool", title: "Scheduled Refresh", description: "If Enabled,  will update vacuum every 30 minutes  while fully charged", defaultValue: false)
+        input(name: "smartRefresh", type: "bool", title: "Smart State Refresh", description: "If enabled, Vacuum will refresh (per interval) while running, then every 5 minutes until Fully Charged", required: true, displayDuringSetup: true, defaultValue: true)
+         input(name: "refreshEnable", type: "bool", title: "Scheduled Refresh", description: "If enabled, Vacuum will refresh every 30 minutes  while fully charged", defaultValue: false)
         input(name: "debugEnable", type: "bool", title: "Enable Debug Logging", defaultValue: true)
          input(name: "infoLogEnable", type: "bool", title: "Enable Info Logging", defaultValue: true)
     }
@@ -398,3 +398,4 @@ def logging(String status, String description) {
     else if (status == "w"){ log.warn(description) }
     else if (status == "e"){ log.error(description) }
 }
+
