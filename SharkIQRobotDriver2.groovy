@@ -69,18 +69,18 @@ def updated(){
 }
     
 def refreshSch(){
-    if (infoLogEnable)  log.info " Refresh 30 min Schedule  triggered"  
+    if (infoLogEnable)  log.info "Refresh 30 min Schedule  triggered"  
     if (device.currentValue('Charging_Status') == "Not Charging") {
         refresh()
         if (infoLogEnable)  log.info "Refresh schedule found Vacuum running changing to smart refresh"  
     }
     else if  (device.currentValue('Charging_Status') == "Charging") {
         refresh()
-        if (infoLogEnable)  log.info "Refresh schedule found Vacuum running changing to smart refresh -charging"
+        if (infoLogEnable)  log.info "Refresh schedule found Vacuum charging changing to smart refresh 5min"
     }
          else if (device.currentValue('Charging_Status') == "Fully Charged") {
      grabSharkInfo()
-      if (infoLogEnable)  log.info " Refresh Schedule  30 min  Complete" 
+      if (infoLogEnable)  log.info "Refresh Schedule  30 min  Complete" 
     }
 }
     
@@ -100,7 +100,7 @@ def refresh() {
         else if (operatingMode in ["Docked"] && batteryCapacity.toString() != "100")
         {
             logging("d", "Refresh scheduled in 300 seconds.")
-            if (infoLogEnable) log.info "Refresh scheduled in 5 minutes"
+            if (infoLogEnable) log.info ("Refresh scheduled in 5 minutes")
             runIn(300, refresh)
         }
     }
@@ -406,3 +406,4 @@ def logging(String status, String description) {
     else if (status == "w"){ log.warn(description) }
     else if (status == "e"){ log.error(description) }
 }
+
