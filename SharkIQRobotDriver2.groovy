@@ -100,7 +100,7 @@ def refresh() {
         else if (operatingMode in ["Docked"] && batteryCapacity.toString() != "100")
         {
             logging("d", "Refresh scheduled in 300 seconds.")
-            if (infoLogEnable) log.info ("d", "Refresh scheduled in 300 seconds.")
+            if (infoLogEnable) log.info "Refresh scheduled in 5 minutes"
             runIn(300, refresh)
         }
     }
