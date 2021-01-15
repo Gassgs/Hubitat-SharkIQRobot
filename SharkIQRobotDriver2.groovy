@@ -69,8 +69,16 @@ def updated(){
 }
     
 def refreshSch(){
-    if (infoLogEnable)  log.info " Refresh Schedule  triggered"  
-    if (device.currentValue('Charging_Status') == "Fully Charged") {
+    if (infoLogEnable)  log.info " Refresh 30 min Schedule  triggered"  
+    if (device.currentValue('Charging_Status') == "Not Charging") {
+        refresh()
+        if (infoLogEnable)  log.info "Refresh schedule found Vacuum running changing to smart refresh"  
+    }
+    else if  (device.currentValue('Charging_Status') == "Charging") {
+        refresh()
+        if (infoLogEnable)  log.info "Refresh schedule found Vacuum running changing to smart refresh -charging"
+    }
+         else if (device.currentValue('Charging_Status') == "Fully Charged") {
      grabSharkInfo()
       if (infoLogEnable)  log.info " Refresh Schedule  30 min  Complete" 
     }
@@ -398,4 +406,3 @@ def logging(String status, String description) {
     else if (status == "w"){ log.warn(description) }
     else if (status == "e"){ log.error(description) }
 }
-
