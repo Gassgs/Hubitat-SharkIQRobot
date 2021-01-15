@@ -1,5 +1,5 @@
 /**
- *  Shark IQ Robot 2
+ *  Shark IQ Robot 2  for older firmware robots
  *
  *  Copyright 2021 Chris Stevens
  *
@@ -40,10 +40,11 @@ metadata {
         attribute "Charging_Status", "text"
         //attribute "RSSI", "text"
         attribute "Error_Code","text"
-        attribute "Robot_Volume","text"
+       // attribute "Robot_Volume","text"
         //attribute "Firmware_Version","text"
         attribute "Last_Refreshed","text"
         //attribute "Recharging_To_Resume","text"
+         attribute "Locate","text"
     }
  
     preferences {
@@ -55,33 +56,39 @@ metadata {
         input(name: "refreshInterval", type: "integer", title: "Refresh Interval", description: "Number of seconds between State Refreshes", required: true, displayDuringSetup: true, defaultValue: 60)
         input(name: "smartRefresh", type: "bool", title: "Smart State Refresh", description: "If enabled, will only refresh when vacuum is running (per interval), then every 5 minutes until Fully Charged. Takes precedence over Scheduled State Refresh.", required: true, displayDuringSetup: true, defaultValue: true)
         input(name: "debugEnable", type: "bool", title: "Enable Debug Logging", defaultValue: true)
+         input(name: "infoLogEnable", type: "bool", title: "Enable Info Logging", defaultValue: true)
     }
 }
 
 def refresh() {
     logging("d", "Refresh Triggered.")
+     if (infoLogEnable)  log.info "Refresh Triggered"  
     grabSharkInfo()
     if (smartRefresh) 
     {
         if (operatingMode in ["Paused", "Running", "Returning to Dock", "Recharging to Continue"])
         {
             logging("d", "Refresh scheduled in $refreshInterval seconds.")
+             if (infoLogEnable)  log.info "Refresh scheduled in $refreshInterval seconds"
             runIn("$refreshInterval".toInteger(), refresh)
         }
-        else if (operatingMode in ["Charging on Dock"] && batteryCapacity.toString() != "100")
+        else if (operatingMode in ["Docked"] && batteryCapacity.toString() != "100")
         {
             logging("d", "Refresh scheduled in 300 seconds.")
+            if (infoLogEnable) log.info ("d", "Refresh scheduled in 300 seconds.")
             runIn(300, refresh)
         }
     }
     else if (!smartRefresh && refreshEnable)
     {
         logging("d", "Refresh scheduled in $refreshInterval secondsaaa.")
+        if (infoLogEnable)log.info " Refresh scheduled in $refreshInterval secondsaaa"
         runIn("$refreshInterval".toInteger(), refresh)
     }
 }
 
 def locate() {
+    if (infoLogEnable)  log.info "Locate pushed"    
      runPostDatapointsCmd("SET_Find_Device", 1)
     sendEvent(name:"Locate",value:"active")
     runIn(3,locateOff)
@@ -102,28 +109,32 @@ def returnToDock(){
 
  
 def on() {
+    if (infoLogEnable)  log.info "Vacuum Starting"    
     runPostDatapointsCmd("SET_Operating_Mode", 2)
     sendEvent(name:"Operating_Mode",value:"Running")
-    runIn(10, refresh)
+    runIn(12, refresh)
 }
  
 def off() {
+    if (infoLogEnable)  log.info "Vacuum Returning to Dock"    
     def stopresults = runPostDatapointsCmd("SET_Operating_Mode", 3)
     sendEvent(name:"Operating_Mode",value:"Returning to Dock")
     logging("d", "$stopresults")
-    runIn(10, refresh)
+    runIn(12, refresh)
 }
 
 def pause() {
+    if (infoLogEnable)  log.info "Vacuum Paused"    
     runPostDatapointsCmd("SET_Operating_Mode", 0)
     sendEvent(name:"Operating_Mode",value:"Paused")
-    runIn(10, refresh)
+    runIn(12, refresh)
 }
 
 def setPowerMode(String powermode) {
     power_modes = ["Normal", "Eco", "Max"]
     powermodeint = power_modes.indexOf(powermode)
     if (powermodeint >= 0) { runPostDatapointsCmd("SET_Power_Mode", powermodeint) }
+    if (infoLogEnable) log.info "Power Mode Changed"
     runIn(10, refresh)
 }
 
@@ -134,11 +145,6 @@ def grabSharkInfo() {
         {
             sendEvent(name: "Battery_Level", value: "$singleProperty.property.value", display: true, displayed: true)
             batteryCapacity = singleProperty.property.value
-        }
-        else if (singleProperty.property.name == "GET_Recharging_To_Resume")
-        {
-            recharging_resume = ["False", "True"]
-            sendEvent(name: "Recharging_To_Resume", value: recharging_resume[singleProperty.property.value], display: true, displayed: true)
         }
         else if (singleProperty.property.name == "GET_Charging_Status")
         {
@@ -163,39 +169,39 @@ def grabSharkInfo() {
     // Charging Status
     // chargingStatusValue - 0 = NOT CHARGING, 1 = CHARGING
     charging_status = ["Not Charging", "Charging"]
-    if (device.currentValue('Battery_Level') == "100") {
+    if (device.currentValue('Battery_Level') == "100"&& operatingModeValue.toString() == "3") { 
         chargingStatusToSend = "Fully Charged" 
+        if (infoLogEnable)  log.info "Vacuum Fully Charged"    
     }
     else {
         chargingStatusToSend = charging_status[chargingStatusValue]
     }
-    sendEvent(name: "Charging_Status", value: chargingStatusToSend, display: true, displayed: true)
-
-    // Operating Mode 
-    // operatingModeValue - 0 = STOPPED, 1 = PAUSED, 2 = ON, 3 = OFF
+    sendEvent(name: "Charging_Status", value: chargingStatusToSend, display: true, displayed: true) 
     operating_modes = ["Paused", "Stopped", "Running", "Returning to Dock"]
-    if (device.currentValue('Recharging_To_Resume') == "True" && operatingModeValue.toString() == "3") { 
-        operatingModeToSend = "Recharging to Continue" 
-    }
-    else if  (operatingModeValue.toString() == "3") {
+       if  (operatingModeValue.toString() == "3") {
         if (device.currentValue('Charging_Status') == "Fully Charged") {
-            operatingModeToSend = " Docked" 
+            operatingModeToSend = "Docked" 
             sendEvent(name:"switch",value:"off")
+            if (infoLogEnable)  log.info "Vacuum Docked"    
         }
         else if (device.currentValue('Charging_Status') == "Charging"){
             operatingModeToSend = "Docked" 
             sendEvent(name:"switch",value:"off")
+             if (infoLogEnable)  log.info "Vacuum Docked" 
         }
         else {
             operatingModeToSend = "Returning to Dock" 
+             if (infoLogEnable)  log.info "Returning to Dock" 
         }
     }
     else {
         operatingModeToSend = operating_modes[operatingModeValue] 
         if (operatingModeValue.toString() == "2") { 
          sendEvent(name:"switch",value:"on")
+         if (infoLogEnable)  log.info "Vacuum Running"            
         }
     }
+    
     sendEvent(name: "Operating_Mode", value: operatingModeToSend, display: true, displayed: true)
     operatingMode = operatingModeToSend
 
