@@ -1,5 +1,5 @@
 /**
- *  Shark IQ Robot 2  for older firmware robots
+ *  Shark IQ Robot 2 For older firmware robots
  *
  *  Copyright 2021 Chris Stevens
  *
@@ -52,13 +52,30 @@ metadata {
         input(name: "loginpassword", type: "password", title: "Password", description: "Shark Account Password", required: true, displayDuringSetup: true)
         input(name: "sharkdevicename", type: "string", title: "Device Name", description: "Name you've given your Shark Device within the App", required: true, displayDuringSetup: true)
         input(name: "mobiletype", type: "enum", title: "Mobile Device", description: "Type of Mobile Device your Shark is setup on", required: true, displayDuringSetup: true, options:["Apple iOS", "Android OS"])
-        input(name: "refreshEnable", type: "bool", title: "Scheduled State Refresh", description: "If enabled, after you click 'Save Preferences', click the 'Refresh' button to start the schedule.", defaultValue: false)
-        input(name: "refreshInterval", type: "integer", title: "Refresh Interval", description: "Number of seconds between State Refreshes", required: true, displayDuringSetup: true, defaultValue: 60)
-        input(name: "smartRefresh", type: "bool", title: "Smart State Refresh", description: "If enabled, will only refresh when vacuum is running (per interval), then every 5 minutes until Fully Charged. Takes precedence over Scheduled State Refresh.", required: true, displayDuringSetup: true, defaultValue: true)
+        input(name: "refreshInterval", type: "integer", title: "Refresh Interval", description: "Number of seconds between Smart State Refreshes", required: true, displayDuringSetup: true, defaultValue: 60)
+        input(name: "smartRefresh", type: "bool", title: "Smart State Refresh", description: "If Enabled, Vacuum will refresh (per interval) while running, then every 5 minutes until Fully Charged", required: true, displayDuringSetup: true, defaultValue: true)
+         input(name: "refreshEnable", type: "bool", title: "Scheduled Refresh", description: "If Enabled,  will update vacuum every 30 minutes  while fully charged", defaultValue: false)
         input(name: "debugEnable", type: "bool", title: "Enable Debug Logging", defaultValue: true)
          input(name: "infoLogEnable", type: "bool", title: "Enable Info Logging", defaultValue: true)
     }
 }
+
+def updated(){
+    if (infoLogEnable)  log.info "Update Triggered"
+    unschedule()
+     if (refreshEnable) 
+    runEvery30Minutes(refreshSch)
+    if (infoLogEnable)  log.info "30 min Refresh Schedlue Started"  
+}
+    
+def refreshSch(){
+    if (infoLogEnable)  log.info " Refresh Schedule  triggered"  
+    if (device.currentValue('Charging_Status') == "Fully Charged") {
+     grabSharkInfo()
+      if (infoLogEnable)  log.info " Refresh Schedule  30 min  Complete" 
+    }
+}
+    
 
 def refresh() {
     logging("d", "Refresh Triggered.")
@@ -78,12 +95,6 @@ def refresh() {
             if (infoLogEnable) log.info ("d", "Refresh scheduled in 300 seconds.")
             runIn(300, refresh)
         }
-    }
-    else if (!smartRefresh && refreshEnable)
-    {
-        logging("d", "Refresh scheduled in $refreshInterval secondsaaa.")
-        if (infoLogEnable)log.info " Refresh scheduled in $refreshInterval secondsaaa"
-        runIn("$refreshInterval".toInteger(), refresh)
     }
 }
 
