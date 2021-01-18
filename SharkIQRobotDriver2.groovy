@@ -33,18 +33,14 @@ metadata {
         command "pause"
         command "locate"
         command "setPowerMode", [[name:"Set Power Mode", type: "ENUM",description: "Set Power Mode", constraints: ["Eco", "Normal", "Max"]]]
-
-        attribute "Battery_Level", "integer"
-        attribute "Operating_Mode", "text"
-        attribute "Power_Mode", "text"
-        attribute "Charging_Status", "text"
-        //attribute "RSSI", "text"
-        attribute "Error_Code","text"
-       // attribute "Robot_Volume","text"
-        //attribute "Firmware_Version","text"
-        attribute "Last_Refreshed","text"
-        //attribute "Recharging_To_Resume","text"
-         attribute "Locate","text"
+    
+        attribute "battery", "integer"
+        attribute "status", "text"
+        attribute "mode", "text"
+        attribute "chargingStatus", "text"
+        attribute "errorCode","text"
+        attribute "lastRefreshed","text"
+        attribute "locate","text"
     }
  
     preferences {
@@ -70,15 +66,15 @@ def updated(){
     
 def refreshSch(){
     if (infoLogEnable)  log.info "Refresh 30 min Schedule  triggered"  
-    if (device.currentValue('Charging_Status') == "Not Charging") {
+    if (device.currentValue('chargingStatus') == "not charging") {
         refresh()
         if (infoLogEnable)  log.info "Refresh schedule found Vacuum running changing to smart refresh"  
     }
-    else if  (device.currentValue('Charging_Status') == "Charging") {
+    else if  (device.currentValue('chargingStatus') == "charging") {
         refresh()
         if (infoLogEnable)  log.info "Refresh schedule found Vacuum charging changing to smart refresh 5min"
     }
-         else if (device.currentValue('Charging_Status') == "Fully Charged") {
+         else if (device.currentValue('chargingStatus') == "fully charged") {
      grabSharkInfo()
       if (infoLogEnable)  log.info "Refresh Schedule  30 min  Complete" 
     }
@@ -91,13 +87,13 @@ def refresh() {
     grabSharkInfo()
     if (smartRefresh) 
     {
-        if (operatingMode in ["Paused", "Running", "Returning to Dock", "Recharging to Continue"])
+        if (operatingMode in ["paused", "running", "returning to dock"])
         {
             logging("d", "Refresh scheduled in $refreshInterval seconds.")
              if (infoLogEnable)  log.info "Refresh scheduled in $refreshInterval seconds"
             runIn("$refreshInterval".toInteger(), refresh)
         }
-        else if (operatingMode in ["Docked"] && batteryCapacity.toString() != "100")
+        else if (operatingMode in ["docked"] && batteryCapacity.toString() != "100")
         {
             logging("d", "Refresh scheduled in 300 seconds.")
             if (infoLogEnable) log.info ("Refresh scheduled in 5 minutes")
@@ -106,16 +102,18 @@ def refresh() {
     }
 }
 
+
+
 def locate() {
     if (infoLogEnable)  log.info "Locate pushed"    
      runPostDatapointsCmd("SET_Find_Device", 1)
-    sendEvent(name:"Locate",value:"active")
+    sendEvent(name:"locate",value:"active")
     runIn(3,locateOff)
     runIn(10, refresh)
 }
 
 def locateOff() {
-    sendEvent(name:"Locate",value:"not active")
+    sendEvent(name:"locate",value:"not active")
 }
 
 def start(){
@@ -130,14 +128,14 @@ def returnToDock(){
 def on() {
     if (infoLogEnable)  log.info "Vacuum Starting"    
     runPostDatapointsCmd("SET_Operating_Mode", 2)
-    sendEvent(name:"Operating_Mode",value:"Running")
+    sendEvent(name:"status",value:"running")
     runIn(12, refresh)
 }
  
 def off() {
     if (infoLogEnable)  log.info "Vacuum Returning to Dock"    
     def stopresults = runPostDatapointsCmd("SET_Operating_Mode", 3)
-    sendEvent(name:"Operating_Mode",value:"Returning to Dock")
+    sendEvent(name:"status",value:"returning to dock")
     logging("d", "$stopresults")
     runIn(12, refresh)
 }
@@ -145,7 +143,7 @@ def off() {
 def pause() {
     if (infoLogEnable)  log.info "Vacuum Paused"    
     runPostDatapointsCmd("SET_Operating_Mode", 0)
-    sendEvent(name:"Operating_Mode",value:"Paused")
+    sendEvent(name:"status",value:"paused")
     runIn(12, refresh)
 }
 
@@ -162,7 +160,7 @@ def grabSharkInfo() {
     propertiesResults.each { singleProperty ->
         if (singleProperty.property.name == "GET_Battery_Capacity")
         {
-            sendEvent(name: "Battery_Level", value: "$singleProperty.property.value", display: true, displayed: true)
+            sendEvent(name: "battery", value: "$singleProperty.property.value", display: true, displayed: true)
             batteryCapacity = singleProperty.property.value
         }
         else if (singleProperty.property.name == "GET_Charging_Status")
@@ -175,41 +173,41 @@ def grabSharkInfo() {
         }
         else if (singleProperty.property.name == "GET_Power_Mode")
         {
-            power_modes = ["Normal", "Eco", "Max"]
-            sendEvent(name: "Power_Mode", value: power_modes[singleProperty.property.value], display: true, displayed: true)
+            power_modes = ["normal", "eco", "max"]
+            sendEvent(name: "mode", value: power_modes[singleProperty.property.value], display: true, displayed: true)
         }
         else if (singleProperty.property.name == "GET_Error_Code")
         {
             error_codes = ["No error", "Side wheel is stuck","Side brush is stuck","Suction motor failed","Brushroll stuck","Side wheel is stuck (2)","Bumper is stuck","Cliff sensor is blocked","Battery power is low","No Dustbin","Fall sensor is blocked","Front wheel is stuck","Switched off","Magnetic strip error","Top bumper is stuck","Wheel encoder error"]
-            sendEvent(name: "Error_Code", value: error_codes[singleProperty.property.value], display: true, displayed: true)
+            sendEvent(name: "errorCode", value: error_codes[singleProperty.property.value], display: true, displayed: true)
         }
     }
 
     // Charging Status
     // chargingStatusValue - 0 = NOT CHARGING, 1 = CHARGING
-    charging_status = ["Not Charging", "Charging"]
-    if (device.currentValue('Battery_Level') == "100"&& operatingModeValue.toString() == "3") { 
-        chargingStatusToSend = "Fully Charged" 
+    charging_status = ["not charging", "charging"]
+    if (device.currentValue('battery') == "100"&& operatingModeValue.toString() == "3") { 
+        chargingStatusToSend = "fully charged" 
         if (infoLogEnable)  log.info "Vacuum Fully Charged"    
     }
     else {
         chargingStatusToSend = charging_status[chargingStatusValue]
     }
-    sendEvent(name: "Charging_Status", value: chargingStatusToSend, display: true, displayed: true) 
-    operating_modes = ["Paused", "Stopped", "Running", "Returning to Dock"]
+    sendEvent(name: "chargingStatus", value: chargingStatusToSend, display: true, displayed: true) 
+    operating_modes = ["paused", "stopped", "running", "returning to dock"]
        if  (operatingModeValue.toString() == "3") {
-        if (device.currentValue('Charging_Status') == "Fully Charged") {
-            operatingModeToSend = "Docked" 
+        if (device.currentValue('chargingStatus') == "fully charged") {
+            operatingModeToSend = "docked" 
             sendEvent(name:"switch",value:"off")
             if (infoLogEnable)  log.info "Vacuum Docked"    
         }
-        else if (device.currentValue('Charging_Status') == "Charging"){
-            operatingModeToSend = "Docked" 
+        else if (device.currentValue('chargingStatus') == "charging"){
+            operatingModeToSend = "docked" 
             sendEvent(name:"switch",value:"off")
              if (infoLogEnable)  log.info "Vacuum Docked" 
         }
         else {
-            operatingModeToSend = "Returning to Dock" 
+            operatingModeToSend = "returning to dock" 
              if (infoLogEnable)  log.info "Returning to Dock" 
         }
     }
@@ -221,11 +219,11 @@ def grabSharkInfo() {
         }
     }
     
-    sendEvent(name: "Operating_Mode", value: operatingModeToSend, display: true, displayed: true)
+    sendEvent(name: "status", value: operatingModeToSend, display: true, displayed: true)
     operatingMode = operatingModeToSend
 
     def date = new Date()
-    sendEvent(name: "Last_Refreshed", value: "$date", display: true, displayed: true)
+    sendEvent(name: "lastRefreshed", value: "$date", display: true, displayed: true)
 }
 
 def initialLogin() {
@@ -406,4 +404,3 @@ def logging(String status, String description) {
     else if (status == "w"){ log.warn(description) }
     else if (status == "e"){ log.error(description) }
 }
-
